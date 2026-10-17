@@ -1,0 +1,57 @@
+name: Descarga Horaria Pronóstico INA
+
+on:
+  schedule:
+    # Corre al minuto 10 de cada hora (evita el minuto 0 donde suele haber más congestión)
+    - cron: '10 * * * *'
+  workflow_dispatch: # Permite disparar la ejecución manualmente desde la pestaña 'Actions'
+
+# Permisos necesarios para que el bot pueda commitear los cambios al repo
+permissions:
+  contents: write
+
+# Evita ejecuciones superpuestas si una corrida tarda más de lo previsto
+concurrency:
+  group: descarga-ina-group
+  cancel-in-progress: false
+
+jobs:
+  ejecutar-descarga:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ejecutar script de descarga
+        run: python descargar_prono.py
+
+      - name: Guardar cambios en el repositorio
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Trae posibles cambios remotos antes de pushear
+          git pull --rebase origin main
+
+          # Agrega únicamente los archivos de datos
+          git add pronosticos_san_fernando.csv corridas_procesadas.txt
+          
+          # Commitea y pushea solo si hay cambios registrados
+          if ! git diff --staged --quiet; then
+            git commit -m "Auto: actualización corrida INA [skip ci]"
+            git push
+          else
+            echo "No se registraron cambios nuevos para commitear."
+          fi
